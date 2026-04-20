@@ -153,6 +153,41 @@ def build_today(repo: Repo, today: Optional[date] = None) -> dict:
     }
 
 
+def build_diff_context(repo_root: Path, max_chars: int = 5000) -> dict:
+    """Gather raw diff context for the briefing.
+
+    Returns the structured object consumed by the summarizer:
+
+        {
+          "last_commit": {"hash", "author", "date", "message", "files_changed"},
+          "last_commit_diff": str,
+          "staged_changes":   str,
+          "unstaged_changes": str,
+          "git_status":       str,
+        }
+
+    All string fields are size-capped. Missing data (no commits, no staged
+    changes, etc.) collapses to empty strings — the caller should treat
+    absence as "nothing to say", not as an error.
+    """
+    from . import diff
+
+    meta = diff.last_commit_meta(repo_root)
+    files = diff.files_changed_last_commit(repo_root)
+
+    last_commit: dict = {}
+    if meta:
+        last_commit = {**meta, "files_changed": files}
+
+    return {
+        "last_commit": last_commit,
+        "last_commit_diff": diff.last_commit_diff(repo_root, max_chars=max_chars),
+        "staged_changes": diff.staged_diff(repo_root, max_chars=max_chars),
+        "unstaged_changes": diff.unstaged_diff(repo_root, max_chars=max_chars),
+        "git_status": diff.short_status(repo_root),
+    }
+
+
 def recent_user_commits(repo: Repo, email: str, limit: int = 30) -> list[dict]:
     """Return up to `limit` most recent commits authored by `email`, newest first."""
     if not email:

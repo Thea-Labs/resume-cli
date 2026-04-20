@@ -22,6 +22,7 @@ from rich.table import Table
 from . import __version__
 from .git_analysis import (
     NotAGitRepo,
+    build_diff_context,
     build_timeline,
     build_today,
     get_current_user,
@@ -232,11 +233,16 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     state: dict = {}
 
     def _scan() -> dict:
+        # Commit-level timeline (authors, last user commit, files since).
         state["timeline"] = build_timeline(repo)
         return state["timeline"]
 
     def _context() -> dict:
+        # Diff-level context: actual +/- lines, staged + unstaged WIP,
+        # and `git status --short`. Merged into the timeline so the
+        # summarizer's single prompt sees everything together.
         state["timeline"] = _attach_prior_wrap(state["timeline"], repo_root)
+        state["timeline"].update(build_diff_context(repo_root))
         return state["timeline"]
 
     def _prepare() -> dict:

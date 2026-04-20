@@ -35,9 +35,10 @@ GIT_MESSAGES = [
 ]
 
 ANALYSIS_MESSAGES = [
-    "🧩 Thea is rebuilding the story",
-    "🧩 Thea is connecting the dots",
+    "🧩 Thea is analyzing recent code changes",
+    "🧩 Thea is reading your diffs",
     "🧩 Thea is reconstructing your thought process",
+    "🧩 Thea is connecting the dots",
     "🧩 Thea is figuring out where you left off",
 ]
 

@@ -62,14 +62,23 @@ THEA_VOICE = (
     "No markdown for breaks — literal blank lines only."
 )
 
-MORNING_USER_TEMPLATE = """Given this git activity timeline, write a morning briefing for a \
-developer returning to work.
+MORNING_USER_TEMPLATE = """Given this git activity timeline — INCLUDING actual diff \
+content — write a morning briefing for a developer returning to work.
 
-Cover, in flowing prose:
-  - what they were working on (reference the commit message and files)
+Analyze the diffs, not just the commit message. Read the +/- lines to understand:
+  - what code was actually added, removed, or restructured
+  - the developer's likely intent behind the change
+  - how any staged_changes / unstaged_changes fit into that intent (these are \
+    work-in-progress signals)
+  - whether git_status hints at additional active files
+
+Cover in flowing prose:
+  - what they were working on (reference specific code changes, not just commit \
+    subjects)
   - which files were involved
-  - what has changed since their last commit (if anything)
-  - what the likely next step is, concretely tied to the code
+  - any uncommitted work still in progress (mention the file and what it looks like \
+    they were doing)
+  - what has landed since their last commit, if anything
 
 If a "yesterday_note" field is present, incorporate it factually — do not praise \
 the decision, just surface it.
@@ -78,7 +87,8 @@ Start with "Welcome back." as the only greeting. End on a technical sentence —
 NOT a motivational line, NOT "let's go", NOT "you've got this". If there is nothing \
 more to say, stop.
 
-TIMELINE (JSON):
+TIMELINE (JSON — includes last_commit, last_commit_diff, staged_changes, \
+unstaged_changes, git_status):
 {timeline_json}
 """
 
@@ -115,11 +125,15 @@ NEXT_STEP_SYSTEM = (
     "Just the step."
 )
 
-NEXT_STEP_USER_TEMPLATE = """Based on this git timeline, what is the single most useful \
-next step? Be specific — name a file or area of the code. If a "yesterday_note" is \
-present, let it steer the suggestion.
+NEXT_STEP_USER_TEMPLATE = """Based on this git timeline — including the actual diff \
+content, staged/unstaged changes, and git status — what is the single most useful \
+next step? Read the diffs to infer intent. Prefer steps that finish work visibly \
+in progress (unstaged/staged) over starting something new. Be specific — name a \
+file, function, or code area. If a "yesterday_note" is present, let it steer the \
+suggestion.
 
-TIMELINE (JSON):
+TIMELINE (JSON — includes last_commit, last_commit_diff, staged_changes, \
+unstaged_changes, git_status):
 {timeline_json}
 """
 
@@ -285,6 +299,17 @@ def _chat(client, model: str, user_prompt: str) -> Optional[str]:
         return None
 
 
+_DIFF_MAX_CHARS = 4500  # secondary cap; upstream diff.py already truncates
+
+
+def _cap(text: object, max_chars: int = _DIFF_MAX_CHARS) -> str:
+    if not isinstance(text, str) or not text:
+        return "" if text is None else str(text or "")
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + f"\n…[truncated, {len(text) - max_chars} chars elided]"
+
+
 def _shrink(timeline: dict, max_commits: int = 10, max_files: int = 8) -> dict:
     t = dict(timeline)
     commits_since = t.get("commits_since") or []
@@ -299,6 +324,18 @@ def _shrink(timeline: dict, max_commits: int = 10, max_files: int = 8) -> dict:
         lc.pop("sha", None)
         lc["files"] = (lc.get("files") or [])[:max_files]
         t["last_user_commit"] = lc
+
+    # Diff fields added by git_analysis.build_diff_context — cap defensively
+    # so a single oversized prompt can't blow out the token budget.
+    for key in ("last_commit_diff", "staged_changes", "unstaged_changes", "git_status"):
+        if key in t:
+            t[key] = _cap(t[key])
+    if t.get("last_commit"):
+        lc = dict(t["last_commit"])
+        lc.pop("hash", None)
+        lc["files_changed"] = (lc.get("files_changed") or [])[:max_files]
+        t["last_commit"] = lc
+
     return t
 
 

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resume-cli"
+version = "0.1.0"
+description = "A CLI that generates a 60-second spoken briefing about your last dev session."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Antonio Krsoski" }]
+dependencies = [
+    "gitpython>=3.1",
+    "openai>=1.0",
+    "elevenlabs>=1.0",
+    "rich>=13.0",
+    "playsound==1.2.2",
+]
+
+[project.scripts]
+resume = "resume.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["resume*"]

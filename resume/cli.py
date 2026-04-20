@@ -29,6 +29,7 @@ from .git_analysis import (
     get_repo,
     recent_user_commits,
 )
+from .session import build_session_context
 from .storage import latest_wrap, save_wrap
 from .story import cluster_commits, render_threads
 from .stream import stream_chunks
@@ -36,6 +37,7 @@ from .summarizer import (
     spoken_form,
     suggest_next_step,
     summarize,
+    summarize_session,
     summarize_today,
     summarize_wrap,
 )
@@ -98,6 +100,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all-authors",
         action="store_true",
         help="Include commits from all authors, not just you.",
+    )
+    sess = sub.add_parser(
+        "session",
+        help="Reconstruct your most recent working session (a burst of commits).",
+    )
+    sess.add_argument(
+        "--gap",
+        type=int,
+        default=90,
+        help="Minutes between commits that still count as one session (default: 90).",
+    )
+    sess.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="How many recent commits to scan when clustering (default: 20).",
     )
     return parser
 
@@ -467,6 +485,84 @@ def cmd_story(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_duration(minutes: int) -> str:
+    if minutes <= 0:
+        return "0m"
+    hours, mins = divmod(minutes, 60)
+    if hours and mins:
+        return f"{hours}h {mins}m"
+    if hours:
+        return f"{hours}h"
+    return f"{mins}m"
+
+
+def _render_session(session: dict, summary: dict) -> None:
+    commit_count = session.get("commit_count", 0)
+    if not commit_count:
+        console.print(
+            "[yellow]No recent commits found — nothing to reconstruct.[/yellow]"
+        )
+        return
+
+    files = session.get("files_touched") or []
+    meta = Table.grid(padding=(0, 2))
+    meta.add_column(style="dim")
+    meta.add_column()
+    meta.add_row("Duration", _format_duration(session.get("duration_minutes", 0)))
+    meta.add_row("Commits", str(commit_count))
+    meta.add_row("Main focus", summary.get("focus", ""))
+    file_display = ", ".join(files[:5])
+    if len(files) > 5:
+        file_display += f" (+{len(files) - 5} more)"
+    meta.add_row("Files touched", file_display or "—")
+    console.print(meta)
+
+    _section("Session summary")
+    console.print(summary.get("summary", ""))
+
+    _section("Suggested next step")
+    console.print(summary.get("next_step", ""))
+
+
+def cmd_session(args: argparse.Namespace) -> int:
+    print_header("Thea is reconstructing your last session...")
+
+    repo = _repo_or_exit()
+    repo_root = Path(repo.working_tree_dir or Path.cwd())
+    client = get_openai_client()
+
+    state: dict = {}
+
+    def _load() -> dict:
+        state["session"] = build_session_context(
+            repo_root, max_commits=args.limit, gap_minutes=args.gap
+        )
+        return state["session"]
+
+    def _cluster() -> dict:
+        return state["session"]
+
+    def _read() -> dict:
+        state["summary"] = summarize_session(state["session"], client=client)
+        return state["summary"]
+
+    try:
+        run_startup(
+            "Last session",
+            [
+                ("🔎 analyzing commits", _load),
+                ("🧩 clustering work sessions", _cluster),
+                ("🧩 reading diffs", _read),
+            ],
+        )
+    except Exception as exc:
+        console.print(f"[red]Session reconstruction failed:[/red] {exc}")
+        return 1
+
+    _render_session(state["session"], state["summary"])
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -478,6 +574,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_wrap(args)
     if command == "story":
         return cmd_story(args)
+    if command == "session":
+        return cmd_session(args)
     return cmd_briefing(args)
 
 

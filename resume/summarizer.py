@@ -154,6 +154,30 @@ COMMITS (JSON array, index = position):
 Respond with JSON only.
 """
 
+SESSION_SYSTEM = (
+    "You are Thea, a calm, technical dev assistant. You are describing a developer's "
+    "most recent continuous working session — a single burst of commits. "
+    "Respond with STRICT JSON only — no prose, no markdown, no code fences. Shape: "
+    "{\"focus\": str, \"summary\": str, \"next_step\": str}. "
+    "`focus` = 3–8 word label naming the main thing worked on (e.g. \"Billing retry logic\"). "
+    "`summary` = 2–4 sentences of flowing prose describing the session's arc — what landed "
+    "and in what order. No bullets. "
+    "`next_step` = one concrete sentence naming a file or function to touch next. "
+    "Hard rules across all three fields: no exclamation points, no motivational phrases "
+    "('you've got this', 'let's', 'keep going', 'great job'), no praise, no filler, no "
+    "editorializing. Just facts about the code."
+)
+
+SESSION_USER_TEMPLATE = """Summarize this working session based on its commits and their \
+diff stats. Read the messages and the stat snippets to infer the main focus. Prefer the \
+most recent commits when deciding the suggested next step.
+
+SESSION (JSON):
+{session_json}
+
+Respond with JSON only.
+"""
+
 
 def suggest_next_step(timeline: dict, client=None, model: str = DEFAULT_MODEL) -> str:
     """Generate a single concrete next-step suggestion (≤35 words)."""
@@ -238,6 +262,102 @@ def _parse_story_response(raw: str, commit_count: int) -> list[dict]:
         if theme and indices:
             clean.append({"theme": theme, "commit_indices": indices})
     return clean
+
+
+def summarize_session(session: dict, client=None, model: str = DEFAULT_MODEL) -> dict:
+    """Return {focus, summary, next_step} for the given session context."""
+    if not session or not session.get("commit_count"):
+        return _session_template(session)
+    if client is None:
+        return _session_template(session)
+
+    prompt = SESSION_USER_TEMPLATE.format(
+        session_json=json.dumps(_shrink_session(session), indent=2)
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SESSION_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+    except Exception:
+        raw = ""
+
+    parsed = _parse_session_response(raw)
+    return parsed or _session_template(session)
+
+
+def _parse_session_response(raw: str) -> Optional[dict]:
+    if not raw:
+        return None
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(raw[start : end + 1])
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    focus = str(parsed.get("focus") or "").strip()
+    summary = str(parsed.get("summary") or "").strip()
+    next_step = str(parsed.get("next_step") or "").strip()
+    if not (focus and summary and next_step):
+        return None
+    return {"focus": focus, "summary": summary, "next_step": next_step}
+
+
+def _shrink_session(session: dict, max_snippets: int = 6, max_files: int = 12) -> dict:
+    s = dict(session)
+    snippets = s.get("diff_snippets") or []
+    s["diff_snippets"] = [
+        {**snip, "diff": _cap(snip.get("diff", ""))}
+        for snip in snippets[:max_snippets]
+    ]
+    files = s.get("files_touched") or []
+    if len(files) > max_files:
+        s["files_touched"] = files[:max_files]
+    commits = s.get("commits") or []
+    s["commits"] = [
+        {k: (v[:max_files] if k == "files" and isinstance(v, list) else v)
+         for k, v in c.items()}
+        for c in commits
+    ]
+    return s
+
+
+def _session_template(session: dict) -> dict:
+    """Deterministic fallback when no LLM or the call failed."""
+    commits = (session or {}).get("commits") or []
+    files = (session or {}).get("files_touched") or []
+
+    if not commits:
+        return {
+            "focus": "No recent session",
+            "summary": "No recent commits by the current git user were found to reconstruct.",
+            "next_step": "Make a small commit and run resume session again.",
+        }
+
+    latest = commits[0]
+    latest_msg = latest.get("message") or "your last change"
+    focus = latest_msg if len(latest_msg) <= 60 else latest_msg[:57] + "..."
+
+    n = len(commits)
+    file_mention = ", ".join(files[:3]) if files else "a few files"
+    summary = (
+        f"{n} commit{'s' if n != 1 else ''} in this session, touching {file_mention}. "
+        f"Latest: \"{latest_msg}\"."
+    )
+
+    target = files[0] if files else (latest.get("files") or ["the last touched file"])[0]
+    next_step = f"Open {target} and continue from \"{latest_msg}\"."
+
+    return {"focus": focus, "summary": summary, "next_step": next_step}
 
 
 def _next_step_template(timeline: dict) -> str:

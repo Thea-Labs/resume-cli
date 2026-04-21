@@ -26,6 +26,7 @@ from .git_analysis import (
     recent_user_commits,
 )
 from .onboarding import needs_onboarding, run_onboarding
+from .plan import cmd_plan
 from .storage import latest_wrap, save_wrap
 from .ui import select_option
 from .story import cluster_commits, render_threads
@@ -86,6 +87,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "wrap",
         help="End-of-day wrap: review today's work and leave a note for tomorrow.",
+    )
+    sub.add_parser(
+        "plan",
+        help="Interactive prompt designer — build a structured prompt for Claude Code.",
     )
     story_parser = sub.add_parser(
         "story", help="Group recent commits into work threads with progress bars."
@@ -486,6 +491,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_wrap(args)
     if command == "story":
         return cmd_story(args)
+    if command == "plan":
+        return cmd_plan(args)
     return cmd_briefing(args)
 
 

@@ -7,10 +7,12 @@ and leaves the right side of the terminal free for future visualizations
 
 from __future__ import annotations
 
+import re
 import shutil
 import textwrap
 
 MAX_CONTENT_WIDTH = 72
+SENTENCES_PER_PARAGRAPH = 2
 
 
 def content_width() -> int:
@@ -24,6 +26,33 @@ def content_width() -> int:
     except OSError:
         cols = 80
     return max(40, min(MAX_CONTENT_WIDTH, cols - 4))
+
+
+def format_paragraphs(text: str, sentences_per_paragraph: int = SENTENCES_PER_PARAGRAPH) -> str:
+    """Break a long block into short paragraphs of ~N sentences each.
+
+    Existing blank-line breaks are preserved. Within each existing paragraph,
+    sentences are regrouped into chunks so no paragraph exceeds
+    `sentences_per_paragraph`.
+    """
+    if not text:
+        return ""
+
+    raw_paragraphs = re.split(r"\n{2,}", text.replace("\r\n", "\n"))
+    out: list[str] = []
+    for para in raw_paragraphs:
+        stripped = " ".join(para.split())
+        if not stripped:
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", stripped)
+        sentences = [s for s in sentences if s.strip()]
+        if not sentences:
+            continue
+        for i in range(0, len(sentences), sentences_per_paragraph):
+            chunk = " ".join(sentences[i : i + sentences_per_paragraph]).strip()
+            if chunk:
+                out.append(chunk)
+    return "\n\n".join(out)
 
 
 def wrap_text(text: str, width: int | None = None) -> str:

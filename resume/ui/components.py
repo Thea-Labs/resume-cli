@@ -10,7 +10,7 @@ from typing import Iterable, Optional
 
 from ..stream import stream_chunks
 from ..utils import console
-from .renderer import content_width, wrap_text
+from .renderer import content_width, format_paragraphs, wrap_text
 
 
 def render_header(title: str = "Thea | Resume", subtitle: Optional[str] = None) -> None:
@@ -44,7 +44,7 @@ def render_paragraph(
     char_delay: float = 0.03,
 ) -> None:
     """Wrap `text` to the content width and print (optionally char-streamed)."""
-    wrapped = wrap_text(text or "")
+    wrapped = wrap_text(format_paragraphs(text or ""))
     if not wrapped:
         return
     if stream:

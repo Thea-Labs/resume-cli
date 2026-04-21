@@ -8,10 +8,11 @@ from .components import (
     render_section,
     render_status_step,
 )
-from .renderer import content_width, wrap_text
+from .renderer import content_width, format_paragraphs, wrap_text
 
 __all__ = [
     "content_width",
+    "format_paragraphs",
     "wrap_text",
     "render_header",
     "render_section",

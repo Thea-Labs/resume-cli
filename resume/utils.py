@@ -97,6 +97,11 @@ def pick_greeting() -> str:
 # ── Header ──────────────────────────────────────────────────────────────
 
 
+def clear_terminal() -> None:
+    """Clear the terminal before a command starts rendering."""
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def print_header(subtitle: Optional[str] = None) -> None:
     """Render the brand header via the unified UI component."""
     from .ui.components import render_header

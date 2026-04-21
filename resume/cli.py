@@ -40,6 +40,7 @@ from .ui import (
     render_section,
 )
 from .utils import (
+    clear_terminal,
     console,
     get_openai_client,
     pick_analysis_label,
@@ -216,6 +217,7 @@ def _action_follow_step(next_step: str, repo_root: Path) -> int:
 
 
 def cmd_briefing(args: argparse.Namespace) -> int:
+    clear_terminal()
     print_header()
     console.print(f"[italic]{pick_greeting()}[/italic]\n")
 
@@ -297,15 +299,21 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     if audio_thread is not None:
         audio_thread.join()
 
-    return _action_menu(
+    rc = _action_menu(
         next_step=state["next_step"],
         timeline=timeline,
         repo_root=repo_root,
         text_only=args.text,
     )
 
+    console.print()
+    console.print("[dim]Tip: run `resume wrap` at the end of your day[/dim]")
+    console.print("[dim]to leave a note for tomorrow.[/dim]")
+    return rc
+
 
 def cmd_wrap(args: argparse.Namespace) -> int:
+    clear_terminal()
     print_header("Thea is wrapping up your day...")
 
     repo = _repo_or_exit()
@@ -348,6 +356,7 @@ def cmd_wrap(args: argparse.Namespace) -> int:
 
 
 def cmd_story(args: argparse.Namespace) -> int:
+    clear_terminal()
     print_header("Thea is mapping your work threads...")
 
     repo = _repo_or_exit()

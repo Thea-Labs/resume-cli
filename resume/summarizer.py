@@ -85,8 +85,11 @@ Cover in 2–4 sentences of flowing prose:
   - any uncommitted work still in progress, described as "still finishing X", not "edits in <path>"
   - if a "yesterday_note" is present, surface its substance
 
-Start with "Welcome back." End on a technical sentence — no motivational closers. \
-If nothing meaningful is in progress, stop early.
+Open with a short, slightly nerdy status-report-style line — e.g. "Status report." \
+/ "Captain's log." / "Morning briefing." / "Situation report." Vary it; never say \
+"Welcome back" or "Good morning" (the greeting already handled that). End on a \
+technical sentence — no motivational closers. If nothing meaningful is in \
+progress, stop early.
 
 TIMELINE (JSON — includes last_commit, last_commit_diff, staged_changes, \
 unstaged_changes, git_status):
@@ -588,7 +591,7 @@ def _morning_template(timeline: dict) -> str:
 
     if last is None:
         return (
-            "Welcome back.\n\n"
+            "Status report: clean slate.\n\n"
             "I don't see any recent commits by you in this repository yet, so there's "
             "nothing to reconstruct — but that also means a clean runway.\n\n"
             "Pick a small first commit to get momentum going."
@@ -598,9 +601,9 @@ def _morning_template(timeline: dict) -> str:
     file_mention = files[0] if files else "a few files"
     subject = last.get("message") or "your last change"
 
-    # Paragraph 1: welcome + what you shipped
+    # Paragraph 1: status report + what you shipped
     p1 = [
-        "Welcome back.",
+        "Status report.",
         f"Last time you shipped \"{subject}\", touching {file_mention}.",
     ]
     if len(files) > 1:

@@ -282,19 +282,21 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         briefing = summarize(timeline, client=client)
         next_step = suggest_next_step(timeline, client=client)
         greeting = generate_greeting(briefing, name=user_name, client=client)
-        audio_path = None
+        audio = {"greeting": None, "briefing": None, "next_step": None}
         audio_error = None
         if want_audio:
             try:
-                audio_path = synthesize(
+                audio["greeting"] = synthesize(greeting, speech_speed=speech_speed)
+                audio["briefing"] = synthesize(
                     spoken_form(briefing), speech_speed=speech_speed
                 )
+                audio["next_step"] = synthesize(next_step, speech_speed=speech_speed)
             except TTSUnavailable as exc:
                 audio_error = str(exc)
         state["briefing"] = briefing
         state["next_step"] = next_step
         state["greeting"] = greeting
-        state["audio_path"] = audio_path
+        state["audio"] = audio
         state["audio_error"] = audio_error
         return state
 
@@ -327,24 +329,27 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         )
         return 0
 
-    audio_thread = None
-    if want_audio:
-        if state.get("audio_path"):
-            audio_thread = play_async(state["audio_path"])
-        elif state.get("audio_error"):
-            console.print(f"[yellow]Audio unavailable:[/yellow] {state['audio_error']}")
+    audio = state.get("audio") or {}
+    if want_audio and state.get("audio_error"):
+        console.print(f"[yellow]Audio unavailable:[/yellow] {state['audio_error']}")
 
     greeting = state.get("greeting") or "Welcome back."
+    greeting_thread = play_async(audio["greeting"]) if audio.get("greeting") else None
     console.print(f"[italic]{greeting}[/italic]")
+    if greeting_thread is not None:
+        greeting_thread.join()
 
     _section("Morning briefing")
+    briefing_thread = play_async(audio["briefing"]) if audio.get("briefing") else None
     _render_briefing(state["briefing"], stream=not args.no_stream)
+    if briefing_thread is not None:
+        briefing_thread.join()
 
     _section("Suggested next step")
+    next_step_thread = play_async(audio["next_step"]) if audio.get("next_step") else None
     _render_briefing(state["next_step"], stream=not args.no_stream)
-
-    if audio_thread is not None:
-        audio_thread.join()
+    if next_step_thread is not None:
+        next_step_thread.join()
 
     today = build_today(repo)
     rc = _action_menu(
@@ -360,7 +365,16 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         context_summary=state.get("next_step", ""),
         client=client,
     )
+    goodbye_thread = None
+    if want_audio:
+        try:
+            goodbye_audio = synthesize(goodbye, speech_speed=speech_speed)
+            goodbye_thread = play_async(goodbye_audio)
+        except TTSUnavailable:
+            pass
     console.print(f"\n[italic]{goodbye}[/italic]")
+    if goodbye_thread is not None:
+        goodbye_thread.join()
 
     console.print()
     console.print("[dim]Tip: run `resume wrap` at the end of your day[/dim]")

@@ -14,9 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
-from rich.rule import Rule
 from rich.table import Table
 
 from . import __version__
@@ -32,7 +30,6 @@ from .git_analysis import (
 from .session import build_session_context
 from .storage import latest_wrap, save_wrap
 from .story import cluster_commits, render_threads
-from .stream import stream_chunks
 from .summarizer import (
     spoken_form,
     suggest_next_step,
@@ -42,6 +39,12 @@ from .summarizer import (
     summarize_wrap,
 )
 from .tts import TTSUnavailable, play_async, synthesize
+from .ui import (
+    render_header,
+    render_menu,
+    render_paragraph,
+    render_section,
+)
 from .utils import (
     console,
     get_openai_client,
@@ -121,8 +124,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _section(title: str) -> None:
-    console.print()
-    console.print(Rule(f"[bold magenta]{title}[/bold magenta]", style="magenta"))
+    render_section(title)
 
 
 def _repo_or_exit():
@@ -135,9 +137,8 @@ def _repo_or_exit():
 
 
 def _render_briefing(text: str, *, stream: bool) -> None:
-    """Render text in a narrow, ChatGPT-style chunked stream."""
-    char_delay = 0.03 if stream else 0.0
-    stream_chunks([text or ""], char_delay=char_delay)
+    """Render a paragraph of narration, wrapped to the content column."""
+    render_paragraph(text or "", stream=stream)
 
 
 def _attach_prior_wrap(timeline: dict, repo_root: Path) -> dict:
@@ -166,10 +167,11 @@ def _action_menu(
 ) -> int:
     """Render the post-briefing action menu and dispatch on the choice."""
     _section("What would you like to do?")
-    console.print("  [bold]1[/bold]  Continue where you left off")
-    console.print("  [bold]2[/bold]  Follow suggested step")
-    console.print("  [bold]3[/bold]  Skip")
-    console.print()
+    render_menu([
+        "Continue where you left off",
+        "Follow suggested step",
+        "Skip",
+    ])
 
     choice = _prompt_choice("> ", {"1", "2", "3"})
 
@@ -337,11 +339,13 @@ def _render_today_table(today: dict) -> None:
     commits = today.get("commits") or []
     files = today.get("files_changed") or {}
 
-    meta = Table.grid(padding=(0, 1))
-    meta.add_row("[dim]Date[/dim]", today.get("date", ""))
-    meta.add_row("[dim]Branch[/dim]", today.get("branch", ""))
-    meta.add_row("[dim]Commits[/dim]", str(len(commits)))
-    meta.add_row("[dim]Files touched[/dim]", str(len(files)))
+    meta = Table.grid(padding=(0, 2))
+    meta.add_column(style="dim")
+    meta.add_column()
+    meta.add_row("Date", today.get("date", ""))
+    meta.add_row("Branch", today.get("branch", ""))
+    meta.add_row("Commits", str(len(commits)))
+    meta.add_row("Files touched", str(len(files)))
     console.print(meta)
 
     if commits:
@@ -385,8 +389,8 @@ def cmd_today(args: argparse.Namespace) -> int:
     with console.status("[bold magenta]Writing a recap...", spinner="dots"):
         recap = summarize_today(today, client=client)
 
-    console.print()
-    console.print(Panel(recap, title="Recap", border_style="magenta"))
+    _section("Recap")
+    render_paragraph(recap)
     return 0
 
 
@@ -409,7 +413,8 @@ def cmd_wrap(args: argparse.Namespace) -> int:
     with console.status("[bold magenta]Drafting the wrap...", spinner="dots"):
         draft = summarize_wrap(today, client=client)
 
-    console.print(Panel(draft, border_style="magenta"))
+    render_paragraph(draft)
+    console.print()
 
     try:
         confirmed = Confirm.ask("Is this correct?", default=True)
@@ -518,10 +523,10 @@ def _render_session(session: dict, summary: dict) -> None:
     console.print(meta)
 
     _section("Session summary")
-    console.print(summary.get("summary", ""))
+    render_paragraph(summary.get("summary", ""))
 
     _section("Suggested next step")
-    console.print(summary.get("next_step", ""))
+    render_paragraph(summary.get("next_step", ""))
 
 
 def cmd_session(args: argparse.Namespace) -> int:

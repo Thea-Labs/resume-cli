@@ -98,11 +98,10 @@ def pick_greeting() -> str:
 
 
 def print_header(subtitle: Optional[str] = None) -> None:
-    """Render the brand header: `🧠 Thea | Resume`, optionally with a subtitle."""
-    console.print("[bold magenta]🧠 Thea | Resume[/bold magenta]")
-    if subtitle:
-        console.print(f"[dim italic]{subtitle}[/dim italic]")
-    console.print()
+    """Render the brand header via the unified UI component."""
+    from .ui.components import render_header
+
+    render_header(subtitle=subtitle)
 
 
 def thea_says(message: str) -> None:
@@ -175,7 +174,7 @@ def run_startup(title: str, steps: list[tuple[str, Callable[[], Any]]]) -> dict[
     results: dict[str, Any] = {}
 
     def _render(frame_idx: int) -> Table:
-        table = Table.grid(padding=(0, 1))
+        table = Table.grid(padding=(0, 2))
         for (label, _), state in zip(steps, statuses):
             if state == "done":
                 marker = "[green]✓[/green]"
@@ -185,7 +184,7 @@ def run_startup(title: str, steps: list[tuple[str, Callable[[], Any]]]) -> dict[
                 marker = "[red]✗[/red]"
             else:
                 marker = "[dim]·[/dim]"
-            table.add_row(" ", marker, label)
+            table.add_row("  ", marker, label)
         return table
 
     import threading

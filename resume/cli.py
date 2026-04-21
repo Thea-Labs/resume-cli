@@ -1,10 +1,9 @@
 """`resume` command entry point.
 
 Subcommands:
-  resume            → morning briefing (default)
-  resume today      → today's activity summary
-  resume wrap       → end-of-day wrap with note for tomorrow
-  resume story      → cluster recent commits into work threads
+  resume          → morning briefing (default)
+  resume wrap     → end-of-day review + note for tomorrow
+  resume story    → cluster recent commits into work threads
 """
 
 from __future__ import annotations
@@ -14,8 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from rich.prompt import Confirm, Prompt
-from rich.table import Table
+from rich.prompt import Prompt
 
 from . import __version__
 from .git_analysis import (
@@ -27,20 +25,16 @@ from .git_analysis import (
     get_repo,
     recent_user_commits,
 )
-from .session import build_session_context
 from .storage import latest_wrap, save_wrap
 from .story import cluster_commits, render_threads
 from .summarizer import (
     spoken_form,
     suggest_next_step,
     summarize,
-    summarize_session,
-    summarize_today,
     summarize_wrap,
 )
 from .tts import TTSUnavailable, play_async, synthesize
 from .ui import (
-    render_header,
     render_menu,
     render_paragraph,
     render_section,
@@ -55,7 +49,6 @@ from .utils import (
     pick_greeting,
     print_header,
     run_startup,
-    short_sha,
 )
 from .workspace import (
     extract_file_path,
@@ -85,10 +78,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("today", help="Show today's commits, files, and a short summary.")
     sub.add_parser(
         "wrap",
-        help="End-of-day wrap: confirm today's summary and leave a note for tomorrow.",
+        help="End-of-day wrap: review today's work and leave a note for tomorrow.",
     )
     story_parser = sub.add_parser(
         "story", help="Group recent commits into work threads with progress bars."
@@ -103,22 +95,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all-authors",
         action="store_true",
         help="Include commits from all authors, not just you.",
-    )
-    sess = sub.add_parser(
-        "session",
-        help="Reconstruct your most recent working session (a burst of commits).",
-    )
-    sess.add_argument(
-        "--gap",
-        type=int,
-        default=90,
-        help="Minutes between commits that still count as one session (default: 90).",
-    )
-    sess.add_argument(
-        "--limit",
-        type=int,
-        default=20,
-        help="How many recent commits to scan when clustering (default: 20).",
     )
     return parser
 
@@ -180,7 +156,6 @@ def _action_menu(
     if choice == "2":
         return _action_follow_step(next_step, repo_root)
 
-    # Default / Skip / invalid / aborted
     console.print("\nContext loaded.")
     return 0
 
@@ -217,7 +192,6 @@ def _action_follow_step(next_step: str, repo_root: Path) -> int:
         console.print("[dim]No specific file referenced in the suggested step.[/dim]")
         return 0
 
-    # If the regex matched a relative path that didn't resolve, try under repo_root.
     absolute = candidate if candidate.is_absolute() else (repo_root / candidate).resolve()
 
     if not absolute.exists():
@@ -253,14 +227,10 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     state: dict = {}
 
     def _scan() -> dict:
-        # Commit-level timeline (authors, last user commit, files since).
         state["timeline"] = build_timeline(repo)
         return state["timeline"]
 
     def _context() -> dict:
-        # Diff-level context: actual +/- lines, staged + unstaged WIP,
-        # and `git status --short`. Merged into the timeline so the
-        # summarizer's single prompt sees everything together.
         state["timeline"] = _attach_prior_wrap(state["timeline"], repo_root)
         state["timeline"].update(build_diff_context(repo_root))
         return state["timeline"]
@@ -335,65 +305,6 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     )
 
 
-def _render_today_table(today: dict) -> None:
-    commits = today.get("commits") or []
-    files = today.get("files_changed") or {}
-
-    meta = Table.grid(padding=(0, 2))
-    meta.add_column(style="dim")
-    meta.add_column()
-    meta.add_row("Date", today.get("date", ""))
-    meta.add_row("Branch", today.get("branch", ""))
-    meta.add_row("Commits", str(len(commits)))
-    meta.add_row("Files touched", str(len(files)))
-    console.print(meta)
-
-    if commits:
-        console.print()
-        commits_table = Table(
-            title="Commits today", title_style="bold magenta", border_style="magenta"
-        )
-        commits_table.add_column("sha", style="dim")
-        commits_table.add_column("message")
-        commits_table.add_column("files", justify="right")
-        for c in commits:
-            commits_table.add_row(
-                c.get("short_sha") or short_sha(c.get("sha")),
-                c.get("message", ""),
-                str(len(c.get("files") or [])),
-            )
-        console.print(commits_table)
-
-    if files:
-        console.print()
-        files_table = Table(
-            title="Files changed", title_style="bold magenta", border_style="magenta"
-        )
-        files_table.add_column("path")
-        files_table.add_column("commits", justify="right")
-        for path, count in files.items():
-            files_table.add_row(path, str(count))
-        console.print(files_table)
-
-
-def cmd_today(args: argparse.Namespace) -> int:
-    print_header("Thea is tallying today's work...")
-
-    repo = _repo_or_exit()
-    today = build_today(repo)
-
-    _section("Today summary")
-    _render_today_table(today)
-
-    client = get_openai_client()
-    with console.status("[bold magenta]Writing a recap...", spinner="dots"):
-        recap = summarize_today(today, client=client)
-
-    _section("Recap")
-    render_paragraph(recap)
-    return 0
-
-
 def cmd_wrap(args: argparse.Namespace) -> int:
     print_header("Thea is wrapping up your day...")
 
@@ -401,42 +312,21 @@ def cmd_wrap(args: argparse.Namespace) -> int:
     repo_root = Path(repo.working_tree_dir or Path.cwd())
     today = build_today(repo)
 
-    _section("Wrap-up")
+    _section("Today's work")
 
     if not (today.get("commits") or []):
-        console.print(
-            "[yellow]No commits today — nothing to wrap. Skipping save.[/yellow]"
-        )
+        console.print("[yellow]No commits today — nothing to wrap.[/yellow]")
         return 0
 
     client = get_openai_client()
     with console.status("[bold magenta]Drafting the wrap...", spinner="dots"):
         draft = summarize_wrap(today, client=client)
-
     render_paragraph(draft)
-    console.print()
 
-    try:
-        confirmed = Confirm.ask("Is this correct?", default=True)
-    except (EOFError, KeyboardInterrupt):
-        console.print()
-        return 0
-
-    if not confirmed:
-        try:
-            correction = Prompt.ask(
-                "[magenta]Thea[/magenta] › What should I change or add?",
-                default="",
-            )
-        except (EOFError, KeyboardInterrupt):
-            console.print()
-            return 0
-        if correction.strip():
-            draft = f"{draft}\n\nCorrection from you: {correction.strip()}"
-
+    _section("Note for tomorrow")
     try:
         tomorrow_note = Prompt.ask(
-            "[magenta]Thea[/magenta] › Anything you'd like to add for tomorrow?",
+            "[magenta]Thea[/magenta] › What should tomorrow-you know?",
             default="",
         )
     except (EOFError, KeyboardInterrupt):
@@ -450,7 +340,7 @@ def cmd_wrap(args: argparse.Namespace) -> int:
         today=today,
     )
     console.print(
-        f"\n[green]Saved wrap to[/green] [dim]{saved_to.relative_to(repo_root)}[/dim]"
+        f"\n[green]Saved to[/green] [dim]{saved_to.relative_to(repo_root)}[/dim]"
     )
     if tomorrow_note.strip():
         console.print("[dim]Tomorrow's briefing will reference this note.[/dim]")
@@ -490,97 +380,30 @@ def cmd_story(args: argparse.Namespace) -> int:
     return 0
 
 
-def _format_duration(minutes: int) -> str:
-    if minutes <= 0:
-        return "0m"
-    hours, mins = divmod(minutes, 60)
-    if hours and mins:
-        return f"{hours}h {mins}m"
-    if hours:
-        return f"{hours}h"
-    return f"{mins}m"
-
-
-def _render_session(session: dict, summary: dict) -> None:
-    commit_count = session.get("commit_count", 0)
-    if not commit_count:
-        console.print(
-            "[yellow]No recent commits found — nothing to reconstruct.[/yellow]"
-        )
-        return
-
-    files = session.get("files_touched") or []
-    meta = Table.grid(padding=(0, 2))
-    meta.add_column(style="dim")
-    meta.add_column()
-    meta.add_row("Duration", _format_duration(session.get("duration_minutes", 0)))
-    meta.add_row("Commits", str(commit_count))
-    meta.add_row("Main focus", summary.get("focus", ""))
-    file_display = ", ".join(files[:5])
-    if len(files) > 5:
-        file_display += f" (+{len(files) - 5} more)"
-    meta.add_row("Files touched", file_display or "—")
-    console.print(meta)
-
-    _section("Session summary")
-    render_paragraph(summary.get("summary", ""))
-
-    _section("Suggested next step")
-    render_paragraph(summary.get("next_step", ""))
-
-
-def cmd_session(args: argparse.Namespace) -> int:
-    print_header("Thea is reconstructing your last session...")
-
-    repo = _repo_or_exit()
-    repo_root = Path(repo.working_tree_dir or Path.cwd())
-    client = get_openai_client()
-
-    state: dict = {}
-
-    def _load() -> dict:
-        state["session"] = build_session_context(
-            repo_root, max_commits=args.limit, gap_minutes=args.gap
-        )
-        return state["session"]
-
-    def _cluster() -> dict:
-        return state["session"]
-
-    def _read() -> dict:
-        state["summary"] = summarize_session(state["session"], client=client)
-        return state["summary"]
-
-    try:
-        run_startup(
-            "Last session",
-            [
-                ("🔎 analyzing commits", _load),
-                ("🧩 clustering work sessions", _cluster),
-                ("🧩 reading diffs", _read),
-            ],
-        )
-    except Exception as exc:
-        console.print(f"[red]Session reconstruction failed:[/red] {exc}")
-        return 1
-
-    _render_session(state["session"], state["summary"])
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+
+    if argv and argv[0] == "today":
+        console.print(
+            "This command has been merged into [bold]resume wrap[/bold].\n"
+            "Run [bold]resume wrap[/bold] to review today's work."
+        )
+        return 0
+    if argv and argv[0] == "session":
+        console.print(
+            "[bold]resume[/bold] now automatically reconstructs your last session.\n"
+            "Just run [bold]resume[/bold]."
+        )
+        return 0
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     command = getattr(args, "command", None)
-    if command == "today":
-        return cmd_today(args)
     if command == "wrap":
         return cmd_wrap(args)
     if command == "story":
         return cmd_story(args)
-    if command == "session":
-        return cmd_session(args)
     return cmd_briefing(args)
 
 

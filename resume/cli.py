@@ -25,9 +25,13 @@ from .git_analysis import (
     get_repo,
     recent_user_commits,
 )
+from .onboarding import needs_onboarding, run_onboarding
 from .storage import latest_wrap, save_wrap
+from .ui import select_option
 from .story import cluster_commits, render_threads
 from .summarizer import (
+    generate_goodbye,
+    generate_greeting,
     spoken_form,
     suggest_next_step,
     summarize,
@@ -35,7 +39,6 @@ from .summarizer import (
 )
 from .tts import TTSUnavailable, play_async, synthesize
 from .ui import (
-    render_menu,
     render_paragraph,
     render_section,
 )
@@ -43,11 +46,12 @@ from .utils import (
     clear_terminal,
     console,
     get_openai_client,
+    load_config,
+    load_user_name,
     pick_analysis_label,
     pick_briefing_label,
     pick_context_title,
     pick_git_label,
-    pick_greeting,
     print_header,
     run_startup,
 )
@@ -125,14 +129,13 @@ def _attach_prior_wrap(timeline: dict, repo_root: Path) -> dict:
     return timeline
 
 
-def _prompt_choice(prompt_text: str, valid: set[str]) -> str:
-    """Read a single-token input() answer, constrained to `valid`. Returns '' on abort."""
+def _prompt_yes_no(prompt_text: str) -> bool:
     try:
         raw = input(prompt_text).strip().lower()
     except (EOFError, KeyboardInterrupt):
         console.print()
-        return ""
-    return raw if raw in valid else ""
+        return False
+    return raw in {"y", "yes"}
 
 
 def _action_menu(
@@ -140,24 +143,58 @@ def _action_menu(
     next_step: str,
     timeline: dict,
     repo_root: Path,
+    today: dict,
     text_only: bool,
 ) -> int:
     """Render the post-briefing action menu and dispatch on the choice."""
     _section("What would you like to do?")
-    render_menu([
+    options = [
         "Continue where you left off",
         "Follow suggested step",
-        "Skip",
-    ])
+        "Amend something to Thea",
+        "Exit",
+    ]
+    idx = select_option("action_menu", options)
 
-    choice = _prompt_choice("> ", {"1", "2", "3"})
-
-    if choice == "1":
+    if idx == 0:
         return _action_continue(timeline, repo_root)
-    if choice == "2":
+    if idx == 1:
         return _action_follow_step(next_step, repo_root)
+    if idx == 2:
+        return _action_amend(repo_root, today)
+    return 0
 
-    console.print("\nContext loaded.")
+
+def _action_amend(repo_root: Path, today: dict) -> int:
+    try:
+        note = Prompt.ask(
+            "[magenta]Thea[/magenta] › What should I note for tomorrow?"
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return 0
+    if not note:
+        return 0
+
+    existing = latest_wrap(repo_root) or {}
+    from datetime import date as _date
+
+    existing_note = (
+        existing.get("tomorrow_note", "").strip()
+        if existing.get("date") == today.get("date")
+        or existing.get("date") == _date.today().isoformat()
+        else ""
+    )
+    combined = "\n".join(x for x in [existing_note, note] if x)
+    save_wrap(
+        repo_root,
+        confirmed_summary=(
+            existing.get("confirmed_summary", "") if existing_note else ""
+        ),
+        tomorrow_note=combined,
+        today=today,
+    )
+    console.print("[green]Noted.[/green] Thea will bring it up tomorrow.")
     return 0
 
 
@@ -171,8 +208,7 @@ def _action_continue(timeline: dict, repo_root: Path) -> int:
         f"\nThea located your most recently edited file: "
         f"[bold]{target.relative_to(repo_root)}[/bold]"
     )
-    answer = _prompt_choice("Open in VS Code? (y/n): ", {"y", "n", "yes", "no"})
-    if answer not in {"y", "yes"}:
+    if not _prompt_yes_no("Open in VS Code? (y/n): "):
         return 0
 
     if open_in_vscode(target, repo_root=repo_root):
@@ -193,7 +229,9 @@ def _action_follow_step(next_step: str, repo_root: Path) -> int:
         console.print("[dim]No specific file referenced in the suggested step.[/dim]")
         return 0
 
-    absolute = candidate if candidate.is_absolute() else (repo_root / candidate).resolve()
+    absolute = (
+        candidate if candidate.is_absolute() else (repo_root / candidate).resolve()
+    )
 
     if not absolute.exists():
         console.print(
@@ -219,12 +257,14 @@ def _action_follow_step(next_step: str, repo_root: Path) -> int:
 def cmd_briefing(args: argparse.Namespace) -> int:
     clear_terminal()
     print_header()
-    console.print(f"[italic]{pick_greeting()}[/italic]\n")
 
     repo = _repo_or_exit()
     repo_root = Path(repo.working_tree_dir or Path.cwd())
     client = get_openai_client()
-    want_audio = not args.text
+    cfg = load_config()
+    user_name = load_user_name()
+    speech_speed = cfg.get("speech_speed", "natural")
+    want_audio = (not args.text) and bool(cfg.get("audio_enabled", True))
 
     state: dict = {}
 
@@ -241,15 +281,19 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         timeline = state["timeline"]
         briefing = summarize(timeline, client=client)
         next_step = suggest_next_step(timeline, client=client)
+        greeting = generate_greeting(briefing, name=user_name, client=client)
         audio_path = None
         audio_error = None
         if want_audio:
             try:
-                audio_path = synthesize(spoken_form(briefing))
+                audio_path = synthesize(
+                    spoken_form(briefing), speech_speed=speech_speed
+                )
             except TTSUnavailable as exc:
                 audio_error = str(exc)
         state["briefing"] = briefing
         state["next_step"] = next_step
+        state["greeting"] = greeting
         state["audio_path"] = audio_path
         state["audio_error"] = audio_error
         return state
@@ -290,6 +334,9 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         elif state.get("audio_error"):
             console.print(f"[yellow]Audio unavailable:[/yellow] {state['audio_error']}")
 
+    greeting = state.get("greeting") or "Welcome back."
+    console.print(f"[italic]{greeting}[/italic]")
+
     _section("Morning briefing")
     _render_briefing(state["briefing"], stream=not args.no_stream)
 
@@ -299,12 +346,21 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     if audio_thread is not None:
         audio_thread.join()
 
+    today = build_today(repo)
     rc = _action_menu(
         next_step=state["next_step"],
         timeline=timeline,
         repo_root=repo_root,
+        today=today,
         text_only=args.text,
     )
+
+    goodbye = generate_goodbye(
+        name=user_name,
+        context_summary=state.get("next_step", ""),
+        client=client,
+    )
+    console.print(f"\n[italic]{goodbye}[/italic]")
 
     console.print()
     console.print("[dim]Tip: run `resume wrap` at the end of your day[/dim]")
@@ -404,6 +460,9 @@ def main(argv: list[str] | None = None) -> int:
             "Just run [bold]resume[/bold]."
         )
         return 0
+
+    if needs_onboarding():
+        run_onboarding()
 
     parser = _build_parser()
     args = parser.parse_args(argv)

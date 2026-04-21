@@ -6,7 +6,7 @@ the right side of the terminal stays free for future visualization.
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Optional
 
 from ..stream import stream_chunks
 from ..utils import console
@@ -56,14 +56,6 @@ def render_paragraph(
         )
     else:
         console.print(wrapped)
-
-
-def render_menu(options: Iterable[str]) -> None:
-    """Render a numbered menu, one option per line, with aligned indices."""
-    items = list(options)
-    for i, option in enumerate(items, start=1):
-        console.print(f"  [bold]{i}[/bold]  {option}")
-    console.print()
 
 
 _STATUS_MARKERS = {

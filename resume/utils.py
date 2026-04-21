@@ -56,14 +56,6 @@ FUN_MESSAGES = [
     "Thea is reviewing your trail of changes...",
 ]
 
-GREETING_MESSAGES = [
-    "Welcome back.",
-    "Good to see you again.",
-    "Ready to continue where you left off.",
-    "Resuming your last working context.",
-    "Reconstructing your workspace.",
-]
-
 FUN_CHANCE = 0.10
 
 
@@ -90,11 +82,26 @@ def pick_briefing_label() -> str:
     return _pick_with_fun(BRIEFING_MESSAGES)
 
 
-def pick_greeting() -> str:
-    return random.choice(GREETING_MESSAGES)
-
-
 # ── Header ──────────────────────────────────────────────────────────────
+
+
+def load_config() -> dict:
+    """Read ~/.thea/config.json. Returns {} on any failure (missing/invalid)."""
+    import json
+    from pathlib import Path
+
+    path = Path.home() / ".thea" / "config.json"
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_user_name() -> str:
+    """Read the developer's first name from ~/.thea/config.json (if any)."""
+    name = str(load_config().get("name") or "").strip()
+    return name.split()[0] if name else ""
 
 
 def clear_terminal() -> None:

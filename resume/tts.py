@@ -32,6 +32,12 @@ ELEVENLABS_VOICE_SETTINGS = {
     "speed": 1.2,
 }
 
+_SPEED_MAP = {
+    "natural": 1.15,
+    "fast": 1.35,
+    "calm": 1.0,
+}
+
 # OpenAI fallback defaults.
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini-tts"
 OPENAI_DEFAULT_VOICE = "nova"
@@ -41,14 +47,15 @@ class TTSUnavailable(Exception):
     """Raised when TTS cannot proceed (no API key, no network, etc.)."""
 
 
-def synthesize(text: str) -> Path:
+def synthesize(text: str, speech_speed: str = "natural") -> Path:
     """Synthesize `text` to an MP3 file. Returns the temp file path.
 
     ElevenLabs is preferred when ELEVENLABS_API_KEY is set. Falls back to
-    OpenAI TTS if only OPENAI_API_KEY is available.
+    OpenAI TTS if only OPENAI_API_KEY is available. `speech_speed` is one
+    of "natural" / "fast" / "calm" (unknown values fall through to default).
     """
     if os.environ.get("ELEVENLABS_API_KEY"):
-        return _synthesize_elevenlabs(text)
+        return _synthesize_elevenlabs(text, speech_speed=speech_speed)
     if os.environ.get("OPENAI_API_KEY"):
         return _synthesize_openai(text)
     raise TTSUnavailable(
@@ -63,7 +70,7 @@ def _tempfile() -> Path:
     return Path(tmp.name)
 
 
-def _synthesize_elevenlabs(text: str) -> Path:
+def _synthesize_elevenlabs(text: str, speech_speed: str = "natural") -> Path:
     try:
         from elevenlabs.client import ElevenLabs
     except ImportError as exc:
@@ -75,13 +82,16 @@ def _synthesize_elevenlabs(text: str) -> Path:
     voice_id = os.environ.get("ELEVENLABS_VOICE_ID") or ELEVENLABS_DEFAULT_VOICE_ID
     model_id = os.environ.get("ELEVENLABS_MODEL") or ELEVENLABS_DEFAULT_MODEL
 
+    voice_settings = dict(ELEVENLABS_VOICE_SETTINGS)
+    voice_settings["speed"] = _SPEED_MAP.get(speech_speed, voice_settings["speed"])
+
     try:
         client = ElevenLabs(api_key=api_key)
         audio_stream = client.text_to_speech.convert(
             voice_id=voice_id,
             model_id=model_id,
             text=text,
-            voice_settings=ELEVENLABS_VOICE_SETTINGS,
+            voice_settings=voice_settings,
             output_format="mp3_44100_128",
         )
     except TypeError:

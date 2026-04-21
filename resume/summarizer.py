@@ -7,6 +7,7 @@ All briefings are <=120 words so they fit comfortably inside 60 seconds of speec
 from __future__ import annotations
 
 import json
+import random
 import re
 from typing import Optional
 
@@ -188,6 +189,103 @@ SESSION (JSON):
 
 Respond with JSON only.
 """
+
+
+GREETING_SYSTEM = (
+    "You are Thea, a dry, technical developer assistant in the tone of Jarvis from "
+    "Iron Man. Produce ONE short greeting sentence (under 12 words). Subtle humor "
+    "allowed. No emoji. No exclamation marks. No motivational language. No jokes that "
+    "break immersion. If a name is provided, address the user by first name. Output "
+    "only the sentence — no quotes, no prefix, no explanation."
+)
+
+GOODBYE_SYSTEM = (
+    "You are Thea. Produce ONE short closing sentence (under 12 words) to end the "
+    "briefing. Calm, technical, dry. No emoji. No exclamation marks. No motivational "
+    "phrases. If a name is provided, you may address them once. Output only the "
+    "sentence."
+)
+
+GREETING_FALLBACK = "Welcome back."
+GOODBYE_FALLBACK = "Context loaded."
+
+
+def _one_line(text: str, max_words: int = 14) -> str:
+    text = (text or "").strip().strip("\"'")
+    text = text.splitlines()[0] if text else ""
+    text = text.replace("!", ".")
+    words = text.split()
+    if len(words) > max_words:
+        text = " ".join(words[:max_words]).rstrip(",;: ") + "."
+    return text.strip()
+
+
+def generate_greeting(
+    context_summary: str,
+    name: str = "",
+    client=None,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Return a short, context-aware greeting. Falls back on any failure."""
+    if client is None:
+        return GREETING_FALLBACK
+
+    user_prompt = (
+        f"Developer name: {name or 'unknown'}\n"
+        f"Recent activity: {(context_summary or '').strip()[:400] or '(none)'}\n\n"
+        "Write the greeting."
+    )
+    if random.random() < 0.2:
+        user_prompt += (
+            "\n\nOptional flavor: you MAY (not must) reference a \"yesterday-you\", "
+            "\"your past self\", or \"your last session\" clue in passing. Skip it "
+            "if it doesn't fit naturally."
+        )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": GREETING_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=40,
+        )
+        text = _one_line(response.choices[0].message.content or "")
+    except Exception:
+        text = ""
+    return text or GREETING_FALLBACK
+
+
+def generate_goodbye(
+    name: str = "",
+    context_summary: str = "",
+    client=None,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Return a short, calm closing line. Falls back on any failure."""
+    if client is None:
+        return GOODBYE_FALLBACK
+
+    user_prompt = (
+        f"Developer name: {name or 'unknown'}\n"
+        f"Next step / context: {(context_summary or '').strip()[:400] or '(none)'}\n\n"
+        "Write the goodbye."
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": GOODBYE_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.6,
+            max_tokens=40,
+        )
+        text = _one_line(response.choices[0].message.content or "")
+    except Exception:
+        text = ""
+    return text or GOODBYE_FALLBACK
 
 
 def suggest_next_step(timeline: dict, client=None, model: str = DEFAULT_MODEL) -> str:

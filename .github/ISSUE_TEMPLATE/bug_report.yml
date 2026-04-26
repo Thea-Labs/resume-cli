@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Resume isn't working as expected.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please include enough detail
+        to reproduce — Resume is small, so most bugs reproduce in seconds once
+        the inputs are clear.
+
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command you ran.
+      placeholder: "resume wrap"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include the error or unexpected output. Redact anything sensitive.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 14.5 / Ubuntu 22.04 / Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.3"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Resume version
+      description: Output of `resume --version`.
+      placeholder: "resume 0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Logs, screenshots, briefing snippets — optional.

@@ -152,6 +152,10 @@ Run `resume watch --help` or `resume story --help` for full documentation.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — keep the surface small.
 
+## Security
+
+Found a vulnerability? Please use [private vulnerability reporting](https://github.com/Thea-Labs/resume-cli/security/advisories/new) — see [SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Thea Labs

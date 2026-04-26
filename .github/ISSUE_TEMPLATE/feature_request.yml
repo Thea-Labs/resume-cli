@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an idea that improves the daily ritual.
+title: "[idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Resume is opinionated and ritual-driven. The bar for new features is:
+        does it sharpen the morning briefing, the evening wrap, or the planning
+        flow? Frame your idea around the ritual, not the mechanism.
+
+  - type: textarea
+    id: ritual
+    attributes:
+      label: Which ritual does this improve?
+      description: Morning briefing? `resume wrap`? `resume plan`? Something new?
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you handle this today?
+      description: What's the alternative without this feature?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should it do?
+      description: Be concrete. Sketch the command, the output, the flow.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Optional — alternatives considered, prior art, mockups.

@@ -5,11 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "resume-cli"
 version = "0.1.0"
-description = "A CLI that generates a 60-second spoken briefing about your last dev session."
+description = "Thea — your 60-second developer briefing. Reconstruct your last working session from git history."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [{ name = "Antonio Krsoski" }]
+keywords = ["cli", "git", "developer-tools", "productivity", "tts", "openai", "elevenlabs"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+]
 dependencies = [
     "gitpython>=3.1",
     "openai>=1.0",
@@ -17,6 +35,11 @@ dependencies = [
     "rich>=13.0",
     "playsound==1.2.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Thea-Labs/resume-cli"
+Repository = "https://github.com/Thea-Labs/resume-cli"
+Issues = "https://github.com/Thea-Labs/resume-cli/issues"
 
 [project.scripts]
 resume = "resume.cli:main"

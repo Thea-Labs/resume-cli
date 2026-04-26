@@ -1,114 +1,130 @@
-# Thea · Resume
+# Resume
 
-```
-🧠 Thea · using Resume
-```
+> Thea — your 60-second developer briefing.
 
-A CLI that helps you start and end the day well.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 
-- `resume` — a **60-second spoken morning briefing** about what you were working on, what changed since, and what to do next.
-- `resume today` — what you've shipped so far today.
-- `resume wrap` — an end-of-day wrap that confirms the day and takes a note for tomorrow.
-- `resume story` — group your recent commits into work threads, visualized as progress bars.
+Resume is a small CLI that reconstructs your last working session from git
+history and reads it back to you in under a minute. Run it in the morning,
+get a spoken briefing about what you were building, what changed since, and
+where to pick up.
 
-Thea, the assistant identity, narrates briefings with an energetic, encouraging female voice optimized for spoken delivery (~120 words, under a minute).
+It's a ritual, not a dashboard.
 
----
-
-## Demo
-
-```
+```text
 $ resume
 
 🧠 Thea is reconstructing your last session
 
-   ✓  🔎 scanning git history
-   ✓  🧩 rebuilding context
-   ✓  🎧 preparing your briefing
+   ✓  scanning git history
+   ✓  rebuilding context
+   ✓  preparing your briefing
 
-── Morning briefing ──────────────────────────────────────
-  Welcome back. Last time you shipped "retry backoff for
-  the Stripe webhook", touching billing_service.py.
+Status report.
+
+──── Morning briefing ──────────────────────────────────────
+  Last time you shipped "retry backoff for the Stripe
+  webhook", touching billing_service.py.
 
   Since then three new commits landed, including edits to
-  payment_handler.py. Worth a quick scan before diving
+  payment_handler.py — worth a quick scan before diving
   back in.
 
-  Let's get going.
-
-── Suggested next step ───────────────────────────────────
-  Open billing_service.py and wire the new retry schedule
-  into the webhook dispatcher.
-
-Continue where you left off? (Y/n)
+──── Suggested next step ───────────────────────────────────
+  Wire the new retry schedule into the webhook dispatcher.
 ```
 
-The briefing streams ChatGPT-style and — if an `ELEVENLABS_API_KEY` (or `OPENAI_API_KEY`) is set — plays through your speakers in parallel.
+The briefing streams char-by-char and, with an `ELEVENLABS_API_KEY` (or
+`OPENAI_API_KEY`), plays through your speakers in parallel.
 
 ---
 
-## Commands
+## Install
 
-| Command | What it does |
+```bash
+pip install resume-cli
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/Thea-Labs/resume-cli
+cd resume-cli
+pip install -e .
+```
+
+Set your keys (both optional — Resume falls back to text templates without
+them):
+
+```bash
+export OPENAI_API_KEY=sk-...        # LLM summaries + fallback audio
+export ELEVENLABS_API_KEY=sk_...    # preferred TTS
+```
+
+Then, in any git repository:
+
+```bash
+resume
+```
+
+The first run walks you through a one-time onboarding (your name, speech
+speed, audio preference) and saves to `~/.thea/config.json`.
+
+---
+
+## The three rituals
+
+| Command | When to run it |
 | --- | --- |
-| `resume` | Morning briefing (default). Uses your last commit + everything since. Appends a dedicated "Suggested next step" block. |
-| `resume today` | Tables of today's commits and files, plus a short recap. |
-| `resume wrap` | Summarizes today, asks "is this correct?", then asks what to leave for tomorrow. Saves to `.resume/wrap.json`. |
-| `resume story` | Clusters recent commits into 3–6 themes and prints a bar chart. Defaults to the last 30 commits by the current git user. |
+| `resume` | Morning. Reconstructs your last session and reads it back. |
+| `resume wrap` | End of day. Reviews today's commits, asks what tomorrow-you should know, saves it. |
+| `resume plan` | Before sending a big prompt to Claude Code. Walks you through five questions and assembles a structured prompt. |
 
 Flags on `resume`:
 
 | Flag | Effect |
 | --- | --- |
 | `--text` | Print the briefing instead of speaking it. |
+| `--instant` | Skip the streaming narration effect. |
 | `--debug` | Print the raw git activity timeline as JSON. |
-| `--no-stream` | Print the briefing all at once instead of char-by-char. |
 | `--version` | Print the version. |
 
-Flags on `resume story`:
+---
 
-| Flag | Effect |
-| --- | --- |
-| `--limit N` | How many recent commits to consider (default: 30). |
-| `--all-authors` | Include commits from every author, not just you. |
+## Advanced (hidden) commands
+
+These are intentionally hidden from `resume --help` to keep the surface
+minimal, but they're fully supported:
+
+```bash
+resume watch --setup        # pick teammates to follow
+resume watch list           # show the watch list
+resume watch add EMAIL
+resume watch remove EMAIL
+
+resume story                # cluster recent commits into work threads
+resume story --all-authors
+```
+
+When a watch list is configured, the morning briefing gains a **Team
+activity** section summarizing what teammates shipped while you were away.
+
+Run `resume watch --help` or `resume story --help` for full documentation.
 
 ---
 
 ## How it works
 
-1. **Analyze git** — `git_analysis.py` finds your most recent commit, the files it touched, and every commit that has landed since. For `today` / `wrap` it scopes to commits authored today. For `story` it pulls the most recent N commits by the current user.
-2. **Summarize** — `summarizer.py` sends the timeline to OpenAI with Thea's voice (energetic, encouraging, spoken, ≤120 words). Without an API key, deterministic templates take over so `--text` still works offline.
-3. **Cluster** — `story.py` groups commits into themes via the LLM (when available) or by top-level directory.
-4. **Stream** — `stream.py` types the briefing char-by-char, wrapped to a narrow column.
-5. **Speak** — `tts.py` synthesizes audio via **ElevenLabs** (preferred) or OpenAI TTS (fallback) and plays it locally.
-6. **Reopen** — `workspace.py` offers to open the last-edited file in VS Code.
-7. **Remember** — `storage.py` persists wrap entries and their "note for tomorrow" to `.resume/wrap.json`. The next morning's briefing picks that note up and threads it into the summary and next-step suggestion.
-
----
-
-## Install
-
-From source:
-
-```bash
-git clone <this repo>
-cd resume
-pip install -e .
-```
-
-Set your keys:
-
-```bash
-# Preferred — ElevenLabs for a warm, expressive spoken voice.
-export ELEVENLABS_API_KEY=sk_...
-# Optional — override the default voice (Rachel). Try "AZnzlk1XvdvUeBnXmlld" (Domi) for more energy.
-export ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-
-# Required for text summaries; also the audio fallback if ElevenLabs isn't set.
-export OPENAI_API_KEY=sk-...
-```
-
-Without any key, the LLM summary and audio are skipped — `--text` still prints a template-based briefing.
+1. **Analyze git** — finds your most recent commit, files it touched, and
+   every commit landed since.
+2. **Summarize** — sends the timeline to OpenAI with Thea's voice (status-
+   report tone, ≤120 words). No key? Deterministic templates take over.
+3. **Stream** — types the briefing char-by-char in a narrow column.
+4. **Speak** — synthesizes via ElevenLabs (preferred) or OpenAI TTS and plays
+   it locally while the text streams.
+5. **Remember** — `resume wrap` persists tomorrow notes to `.resume/` at the
+   repo root; the next morning's briefing threads them in.
 
 ---
 
@@ -116,39 +132,26 @@ Without any key, the LLM summary and audio are skipped — `--text` still prints
 
 | Var | Purpose |
 | --- | --- |
-| `OPENAI_API_KEY` | Drives LLM summaries and is the audio fallback when ElevenLabs isn't configured. |
-| `ELEVENLABS_API_KEY` | Enables ElevenLabs as the primary TTS backend. |
+| `OPENAI_API_KEY` | LLM summaries + fallback audio. |
+| `ELEVENLABS_API_KEY` | Preferred TTS backend. |
 | `ELEVENLABS_VOICE_ID` | Override the default "Rachel" voice. |
 | `ELEVENLABS_MODEL` | Override the default `eleven_turbo_v2_5` model. |
-
----
-
-## Project layout
-
-```
-resume/
-├── cli.py            # argparse + subcommand dispatch + startup sequence
-├── git_analysis.py   # last-commit detection, today, timeline, recent commits
-├── summarizer.py     # Thea voice prompts, next-step, story clustering LLM prompts
-├── story.py          # cluster commits into threads + bar rendering
-├── stream.py         # char-by-char narration-style printer
-├── storage.py        # .resume/wrap.json persistence
-├── tts.py            # ElevenLabs-first TTS with OpenAI fallback
-├── workspace.py      # detect last-edited file + VS Code launch
-└── utils.py          # shared console, brand header, startup runner, helpers
-```
 
 ---
 
 ## Requirements
 
 - Python 3.9+
-- A git repository with at least one commit authored by the current `user.email`
-- Optional: `ELEVENLABS_API_KEY` (preferred audio) or `OPENAI_API_KEY` (fallback audio + LLM summaries)
-- Optional: the VS Code `code` command on `$PATH` (enables the reopen step)
+- A git repository with at least one commit by the current `user.email`
+- Optional: ElevenLabs and/or OpenAI API keys
+- Optional: VS Code `code` command on `$PATH` (enables the reopen step)
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — keep the surface small.
+
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 Antonio Krsoski

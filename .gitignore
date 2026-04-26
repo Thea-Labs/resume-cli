@@ -1,10 +1,32 @@
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
-.venv/
-venv/
+.eggs/
 build/
 dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Secrets / local config
 .env
+.env.*
+!.env.example
+
+# Per-repo Resume state (wrap notes, watch list)
+.resume/
+
+# Generated audio
 *.mp3
+
+# Editors / OS
 .DS_Store
+.idea/
+.vscode/

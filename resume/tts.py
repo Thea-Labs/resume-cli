@@ -22,7 +22,7 @@ import threading
 from pathlib import Path
 
 # ElevenLabs defaults — female voice "Rachel", warm and natural.
-ELEVENLABS_DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+ELEVENLABS_DEFAULT_VOICE_ID = "4RZ84U1b4WCqpu57LvIq"
 ELEVENLABS_DEFAULT_MODEL = "eleven_turbo_v2_5"
 ELEVENLABS_VOICE_SETTINGS = {
     "stability": 0.85,

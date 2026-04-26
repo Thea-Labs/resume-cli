@@ -56,8 +56,37 @@ def watched_authors(repo_root: Path) -> list[str]:
 # ── Author detection ────────────────────────────────────────────────────
 
 
+_BOT_KEYWORDS = (
+    "[bot]",
+    "claude",
+    "copilot",
+    "dependabot",
+    "renovate",
+    "github-actions",
+    "snyk-bot",
+    "semantic-release",
+)
+
+
+def _is_bot_or_noreply(name: str, email: str) -> bool:
+    """Filter out GitHub noreply addresses and known automation accounts."""
+    e = email.lower()
+    n = name.lower()
+    if e.endswith("@users.noreply.github.com"):
+        return True
+    if "noreply" in e or "no-reply" in e:
+        return True
+    local = e.split("@", 1)[0]
+    haystack = f"{n} {local}"
+    return any(kw in haystack for kw in _BOT_KEYWORDS)
+
+
 def detect_authors(repo_root: Path) -> list[dict]:
-    """Run `git shortlog -sne --all` and parse into a list of authors."""
+    """Run `git shortlog -sne --all` and parse into a list of authors.
+
+    Filters out GitHub noreply addresses and automation accounts (Claude,
+    Copilot, Dependabot, Renovate, github-actions, generic `[bot]` accounts).
+    """
     try:
         out = subprocess.run(
             ["git", "shortlog", "-sne", "--all"],
@@ -76,6 +105,8 @@ def detect_authors(repo_root: Path) -> list[dict]:
         if not m:
             continue
         count, name, email = m.group(1), m.group(2).strip(), m.group(3).strip()
+        if _is_bot_or_noreply(name, email):
+            continue
         authors.append({"name": name, "email": email, "count": int(count)})
     return authors
 

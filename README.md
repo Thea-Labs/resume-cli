@@ -154,4 +154,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — keep the surface small.
 
 ## License
 
-[MIT](LICENSE) © 2026 Antonio Krsoski
+[MIT](LICENSE) © 2026 Thea Labs

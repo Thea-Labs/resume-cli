@@ -70,10 +70,29 @@ from .workspace import (
 )
 
 
+_TOP_LEVEL_HELP = """resume — Thea's developer briefing
+
+Commands:
+  resume        Reconstruct your last working session
+  resume wrap   End your day and leave a note for tomorrow
+  resume plan   Design the perfect prompt for Claude Code
+
+Options:
+  --text        Print the briefing instead of speaking
+  --debug       Show raw git activity timeline
+  --instant     Print the briefing immediately (no narration effect)
+  --version     Show version and exit
+"""
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="resume",
-        description="Thea | Resume — a 60-second briefing on what you were working on.",
+        description="Thea — your 60-second developer briefing.",
+        add_help=False,  # we render our own top-level help
+    )
+    parser.add_argument(
+        "-h", "--help", action="store_true", help=argparse.SUPPRESS
     )
     parser.add_argument("--version", action="version", version=f"resume {__version__}")
     parser.add_argument(
@@ -85,12 +104,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print the raw git activity timeline and exit.",
     )
     parser.add_argument(
-        "--no-stream",
+        "--instant",
         action="store_true",
         help="Print the briefing all at once (no narration effect).",
     )
 
     sub = parser.add_subparsers(dest="command")
+    # Public commands — visible in `resume --help`.
     sub.add_parser(
         "wrap",
         help="End-of-day wrap: review today's work and leave a note for tomorrow.",
@@ -99,10 +119,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "plan",
         help="Interactive prompt designer — build a structured prompt for Claude Code.",
     )
+    # Hidden commands — fully functional, but suppressed from the main help.
     add_watch_parser(sub)
-    story_parser = sub.add_parser(
-        "story", help="Group recent commits into work threads with progress bars."
-    )
+    story_parser = sub.add_parser("story", help=argparse.SUPPRESS)
     story_parser.add_argument(
         "--limit",
         type=int,
@@ -366,19 +385,19 @@ def cmd_briefing(args: argparse.Namespace) -> int:
 
     _section("Morning briefing")
     briefing_thread = play_async(audio["briefing"]) if audio.get("briefing") else None
-    _render_briefing(state["briefing"], stream=not args.no_stream)
+    _render_briefing(state["briefing"], stream=not args.instant)
     if briefing_thread is not None:
         briefing_thread.join()
 
     _section("Suggested next step")
     next_step_thread = play_async(audio["next_step"]) if audio.get("next_step") else None
-    _render_briefing(state["next_step"], stream=not args.no_stream)
+    _render_briefing(state["next_step"], stream=not args.instant)
     if next_step_thread is not None:
         next_step_thread.join()
 
     if state.get("team_summary"):
         _section("Team activity")
-        _render_briefing(state["team_summary"], stream=not args.no_stream)
+        _render_briefing(state["team_summary"], stream=not args.instant)
 
     today = build_today(repo)
     rc = _action_menu(
@@ -504,11 +523,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    # Custom top-level help — show only the public ritual commands.
+    if argv and argv[0] in ("-h", "--help"):
+        sys.stdout.write(_TOP_LEVEL_HELP)
+        return 0
+
     if needs_onboarding():
         run_onboarding()
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if getattr(args, "help", False):
+        sys.stdout.write(_TOP_LEVEL_HELP)
+        return 0
 
     command = getattr(args, "command", None)
     if command == "wrap":

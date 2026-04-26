@@ -272,7 +272,8 @@ def _parse_log(raw: str) -> list[dict]:
 def add_watch_parser(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser(
         "watch",
-        help="Follow teammates and surface their activity in your morning briefing.",
+        help=argparse.SUPPRESS,
+        description="Follow teammates and surface their activity in your morning briefing.",
     )
     parser.add_argument(
         "--setup",

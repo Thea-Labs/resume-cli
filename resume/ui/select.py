@@ -55,7 +55,7 @@ def _fallback_numeric(options: list[str], default: int) -> Optional[int]:
 def _read_key_posix(fd: int) -> str:
     """Block for one logical keypress on `fd` (already in cbreak mode).
 
-    Returns 'up', 'down', 'enter', 'abort', or ''.
+    Returns 'up', 'down', 'enter', 'space', 'save', 'abort', or ''.
     """
     import select as _select
 
@@ -71,6 +71,10 @@ def _read_key_posix(fd: int) -> str:
         return "abort"
     if ch in (10, 13):
         return "enter"
+    if ch == 32:
+        return "space"
+    if ch in (ord("x"), ord("X")):
+        return "save"
     if ch in (ord("q"), ord("Q")):
         return "abort"
     if ch == 27:  # Esc — possibly start of an escape sequence
@@ -98,6 +102,10 @@ def _read_key_windows() -> str:
     ch = msvcrt.getch()
     if ch in (b"\r", b"\n"):
         return "enter"
+    if ch == b" ":
+        return "space"
+    if ch in (b"x", b"X"):
+        return "save"
     if ch == b"\x03":
         return "abort"
     if ch == b"\x1b":
@@ -167,6 +175,152 @@ def select_option(
 
     console.print(_render_final(options, idx))
     return idx
+
+
+def _render_multi(options: list[str], idx: int, selected: set[int]) -> Text:
+    text = Text()
+    for i, label in enumerate(options):
+        cursor = "❯" if i == idx else " "
+        box = "[x]" if i in selected else "[ ]"
+        line = f"  {cursor} {box} {label}\n"
+        text.append(line, style="bold magenta" if i == idx else "dim")
+    text.append(
+        "\n  ↑/↓ move · enter toggle · x to save · q to cancel\n",
+        style="dim",
+    )
+    return text
+
+
+def _render_multi_final(options: list[str], selected: set[int]) -> Text:
+    text = Text()
+    if not selected:
+        text.append("  (no selections)\n", style="dim")
+        return text
+    for i in sorted(selected):
+        text.append(f"  ❯ [x] {options[i]}\n", style="bold magenta")
+    return text
+
+
+def _fallback_multi_numeric(options: list[str]) -> Optional[list[int]]:
+    from rich.prompt import Prompt
+
+    for i, label in enumerate(options, start=1):
+        console.print(f"  [bold]{i}[/bold]  {label}")
+    console.print()
+    try:
+        raw = Prompt.ask(
+            "[magenta]Thea[/magenta] › Enter numbers (e.g. 1,2 3)"
+        )
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return None
+    import re
+
+    picked: set[int] = set()
+    for tok in re.split(r"[,\s]+", (raw or "").strip()):
+        if tok.isdigit():
+            n = int(tok)
+            if 1 <= n <= len(options):
+                picked.add(n - 1)
+    return sorted(picked)
+
+
+def select_many(
+    title: str,
+    options: list[str],
+    *,
+    preselected: Optional[list[int]] = None,
+) -> Optional[list[int]]:
+    """Multi-select picker. Enter toggles, x saves, q/Esc aborts.
+
+    Returns sorted list of selected 0-based indices (possibly empty), or None
+    if the user aborted.
+    """
+    if not options:
+        return []
+
+    if not sys.stdin.isatty():
+        return _fallback_multi_numeric(options)
+
+    is_windows = sys.platform == "win32"
+    if is_windows:
+        return _select_many_windows(options, preselected or [])
+
+    try:
+        import termios
+        import tty
+    except ImportError:
+        return _fallback_multi_numeric(options)
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    idx = 0
+    selected: set[int] = {i for i in (preselected or []) if 0 <= i < len(options)}
+
+    try:
+        tty.setcbreak(fd)
+        with Live(
+            _render_multi(options, idx, selected),
+            console=console,
+            refresh_per_second=30,
+            transient=True,
+        ) as live:
+            while True:
+                key = _read_key_posix(fd)
+                if key == "up":
+                    idx = (idx - 1) % len(options)
+                elif key == "down":
+                    idx = (idx + 1) % len(options)
+                elif key in ("enter", "space"):
+                    if idx in selected:
+                        selected.remove(idx)
+                    else:
+                        selected.add(idx)
+                elif key == "save":
+                    break
+                elif key == "abort":
+                    return None
+                else:
+                    continue
+                live.update(_render_multi(options, idx, selected))
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    console.print(_render_multi_final(options, selected))
+    return sorted(selected)
+
+
+def _select_many_windows(
+    options: list[str], preselected: list[int]
+) -> Optional[list[int]]:
+    idx = 0
+    selected: set[int] = {i for i in preselected if 0 <= i < len(options)}
+    with Live(
+        _render_multi(options, idx, selected),
+        console=console,
+        refresh_per_second=30,
+        transient=True,
+    ) as live:
+        while True:
+            key = _read_key_windows()
+            if key == "up":
+                idx = (idx - 1) % len(options)
+            elif key == "down":
+                idx = (idx + 1) % len(options)
+            elif key in ("enter", "space"):
+                if idx in selected:
+                    selected.remove(idx)
+                else:
+                    selected.add(idx)
+            elif key == "save":
+                break
+            elif key == "abort":
+                return None
+            else:
+                continue
+            live.update(_render_multi(options, idx, selected))
+    console.print(_render_multi_final(options, selected))
+    return sorted(selected)
 
 
 def _select_windows(options: list[str], default: int) -> Optional[int]:

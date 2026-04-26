@@ -8,7 +8,7 @@ from .components import (
     render_status_step,
 )
 from .renderer import content_width, format_paragraphs, wrap_text
-from .select import select_option
+from .select import select_many, select_option
 
 __all__ = [
     "content_width",
@@ -20,4 +20,5 @@ __all__ = [
     "render_paragraph",
     "render_status_step",
     "select_option",
+    "select_many",
 ]

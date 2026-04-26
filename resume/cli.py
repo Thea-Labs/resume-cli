@@ -27,6 +27,12 @@ from .git_analysis import (
 )
 from .onboarding import needs_onboarding, run_onboarding
 from .plan import cmd_plan
+from .watch import (
+    add_watch_parser,
+    cmd_watch,
+    fetch_team_activity,
+    watched_authors,
+)
 from .storage import latest_wrap, save_wrap
 from .ui import select_option
 from .story import cluster_commits, render_threads
@@ -36,6 +42,7 @@ from .summarizer import (
     spoken_form,
     suggest_next_step,
     summarize,
+    summarize_team_activity,
     summarize_wrap,
 )
 from .tts import TTSUnavailable, play_async, synthesize
@@ -92,6 +99,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "plan",
         help="Interactive prompt designer — build a structured prompt for Claude Code.",
     )
+    add_watch_parser(sub)
     story_parser = sub.add_parser(
         "story", help="Group recent commits into work threads with progress bars."
     )
@@ -287,6 +295,18 @@ def cmd_briefing(args: argparse.Namespace) -> int:
         briefing = summarize(timeline, client=client)
         next_step = suggest_next_step(timeline, client=client)
         greeting = generate_greeting(briefing, name=user_name, client=client)
+
+        # Team activity (optional — gated on `.resume/config.json` watch list).
+        team_summary = ""
+        emails = watched_authors(repo_root)
+        if emails:
+            since_iso = (timeline.get("last_user_commit") or {}).get("date")
+            self_email = (timeline.get("user") or {}).get("email", "")
+            team = fetch_team_activity(
+                repo_root, emails, since_iso=since_iso, self_email=self_email
+            )
+            team_summary = summarize_team_activity(team, client=client)
+        state["team_summary"] = team_summary
         audio = {"greeting": None, "briefing": None, "next_step": None}
         audio_error = None
         if want_audio:
@@ -355,6 +375,10 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     _render_briefing(state["next_step"], stream=not args.no_stream)
     if next_step_thread is not None:
         next_step_thread.join()
+
+    if state.get("team_summary"):
+        _section("Team activity")
+        _render_briefing(state["team_summary"], stream=not args.no_stream)
 
     today = build_today(repo)
     rc = _action_menu(
@@ -493,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_story(args)
     if command == "plan":
         return cmd_plan(args)
+    if command == "watch":
+        return cmd_watch(args)
     return cmd_briefing(args)
 
 

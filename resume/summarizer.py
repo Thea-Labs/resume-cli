@@ -506,6 +506,67 @@ def summarize_today(today: dict, client=None, model: str = DEFAULT_MODEL) -> str
     return clamp_words(text, max_words=MAX_WORDS)
 
 
+TEAM_USER_TEMPLATE = """Summarize what these teammates shipped while the user was \
+away. Output rules — follow exactly:
+
+• Open with the literal line: "While you were away:"
+• Then 1–3 bullets, one per author, picking the most impactful authors first.
+• Each bullet: "• <First name> <verb-phrase>" — present tense past action \
+("refactored auth middleware", "added retry backoff", "fixed migration bug").
+• ≤ 12 words per bullet. No file paths, no directory names, no SHAs, no commit \
+subjects copied verbatim — describe at the FEATURE / SYSTEM level.
+• No praise, no editorializing, no exclamation points.
+
+TEAM (JSON — list of authors with their commit messages and changed files):
+{team_json}
+"""
+
+
+def summarize_team_activity(
+    team: list[dict],
+    client=None,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Bullet-summarize teammate activity. Returns '' if nothing to say."""
+    if not team:
+        return ""
+    if client is None:
+        return _team_template(team)
+
+    payload = [
+        {
+            "author": entry.get("author") or entry.get("email", ""),
+            "commits": [
+                {
+                    "message": c.get("message", ""),
+                    "files": (c.get("files") or [])[:8],
+                }
+                for c in (entry.get("commits") or [])[:8]
+            ],
+        }
+        for entry in team[:6]
+    ]
+    prompt = TEAM_USER_TEMPLATE.format(team_json=json.dumps(payload, indent=2))
+    text = _chat(client, model, prompt) or _team_template(team)
+    return text.strip()
+
+
+def _team_template(team: list[dict]) -> str:
+    """Offline fallback: heuristic bullets when no LLM client is available."""
+    lines = ["While you were away:"]
+    for entry in team[:3]:
+        author = entry.get("author") or entry.get("email", "")
+        first = author.split()[0] if author else "Someone"
+        commits = entry.get("commits") or []
+        if not commits:
+            continue
+        n = len(commits)
+        last_msg = commits[0].get("message", "").strip()
+        verb = f"shipped {n} commits" if n > 1 else f"shipped \"{last_msg[:60]}\""
+        lines.append(f"• {first} {verb}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def summarize_wrap(today: dict, client=None, model: str = DEFAULT_MODEL) -> str:
     """Produce the bulleted end-of-day wrap."""
     if client is None:

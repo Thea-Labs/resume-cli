@@ -1,0 +1,3 @@
+# Default reviewer for every PR.
+# To switch to the org maintainers team, replace with: * @Thea-Labs/maintainers
+*       @jarngolem

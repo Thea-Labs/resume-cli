@@ -9,7 +9,7 @@ description = "Thea — your 60-second developer briefing. Reconstruct your last
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-authors = [{ name = "Antonio Krsoski" }]
+authors = [{ name = "jarngolem" }]
 keywords = ["cli", "git", "developer-tools", "productivity", "tts", "openai", "elevenlabs"]
 classifiers = [
     "Development Status :: 4 - Beta",
